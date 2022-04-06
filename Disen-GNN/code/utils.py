@@ -1,11 +1,3 @@
-#!/usr/bin/env python36
-# -*- coding: utf-8 -*-
-"""
-Created on July, 2018
-
-@author: Tangrizzly
-"""
-
 import networkx as nx
 import numpy as np
 
