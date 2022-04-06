@@ -29,12 +29,12 @@ def build_graph(train_data):
     return graph
 
 
-def data_masks(all_usr_pois, item_tail): #输入：将所有输入序列all_usr_pois, 末尾补全的数据item_tail
-    us_lens = [len(upois) for upois in all_usr_pois] #每一个输入序列的长度的列表
-    len_max = max(us_lens)  #得到输入序列的最大长度
-    us_pois = [upois + item_tail * (len_max - le) for upois, le in zip(all_usr_pois, us_lens)] #将所有输入序列按照最长长度尾部补全 item_tail
-    us_msks = [[1] * le + [0] * (len_max - le) for le in us_lens] #有序列的位置是[1],没有动作序列的位置是[0]
-    return us_pois, us_msks, len_max  #输出：补全0后的序列us_pois, 面罩序列us_msks, 最大序列长度len_max
+def data_masks(all_usr_pois, item_tail): 
+    us_lens = [len(upois) for upois in all_usr_pois] 
+    len_max = max(us_lens)  
+    us_pois = [upois + item_tail * (len_max - le) for upois, le in zip(all_usr_pois, us_lens)] 
+    us_msks = [[1] * le + [0] * (len_max - le) for le in us_lens]
+    return us_pois, us_msks, len_max 
 
 
 def split_validation(train_set, valid_portion):
@@ -53,204 +53,56 @@ def split_validation(train_set, valid_portion):
 
 class Data():
     def __init__(self, data, shuffle=False, graph=None):
-        inputs = data[0]   #输入序列的列表
-        inputs, mask, len_max = data_masks(inputs, [0])  #详见函数 ---> data_masks() 这个函数使得所有会话按照最长的长度补0了！
-        self.inputs = np.asarray(inputs)  #补全0后的输入序列，并转化成array()
-        self.mask = np.asarray(mask)     #面罩序列，并转化成array()
-        self.len_max = len_max    #最大序列长度
-        self.targets = np.asarray(data[1])  #预测的序列的列表
-        self.length = len(inputs)  #输入样本的大小
-        self.shuffle = shuffle   #是否打乱数据
-        self.graph = graph    #数据图 (?) 这个似乎没有用到
+        inputs = data[0]  
+        inputs, mask, len_max = data_masks(inputs, [0])  
+        self.inputs = np.asarray(inputs) 
+        self.mask = np.asarray(mask)   
+        self.len_max = len_max    
+        self.targets = np.asarray(data[1]) 
+        self.length = len(inputs) 
+        self.shuffle = shuffle  
+        self.graph = graph    
 
-    def generate_batch(self, batch_size):  #根据批的大小生成批数据的索引，如果shuffle则打乱数据
-        if self.shuffle:  #如果需要打乱数据
-            shuffled_arg = np.arange(self.length)  #生成array([0,1,...,样本长度-1])
-            np.random.shuffle(shuffled_arg)  #随机打乱shuffled_arg的顺序
-            self.inputs = self.inputs[shuffled_arg]  #按照shuffled_arg来索引输入数据
-            self.mask = self.mask[shuffled_arg]   #按照shuffled_arg来索引面罩数据
-            self.targets = self.targets[shuffled_arg]  #按照shuffled_arg来索引预测目标数据
-        n_batch = int(self.length / batch_size)  #得到训练批数
-        if self.length % batch_size != 0: #批数需要取向上取整
+    def generate_batch(self, batch_size):  
+        if self.shuffle:  
+            shuffled_arg = np.arange(self.length)  
+            np.random.shuffle(shuffled_arg)  
+            self.inputs = self.inputs[shuffled_arg]  
+            self.mask = self.mask[shuffled_arg]   
+            self.targets = self.targets[shuffled_arg]  
+        n_batch = int(self.length / batch_size)  
+        if self.length % batch_size != 0: 
             n_batch += 1
-        slices = np.split(np.arange(n_batch * batch_size), n_batch)  #所有数据按照批进行拆分。eg:[0,..,99][100,..,199]...
-        slices[-1] = slices[-1][:(self.length - batch_size * (n_batch - 1))]  #最后一批有多少给多少。eg:[500,..506]
+        slices = np.split(np.arange(n_batch * batch_size), n_batch)  
+        slices[-1] = slices[-1][:(self.length - batch_size * (n_batch - 1))]  
         return slices
 
-    def get_slice(self, i):  #根据索引i得到对应的数据
-        inputs, mask, targets = self.inputs[i], self.mask[i], self.targets[i] #得到对应索引的输入(全局索引)，面罩，目标数据
+    def get_slice(self, i):  
+        inputs, mask, targets = self.inputs[i], self.mask[i], self.targets[i] 
         items, n_node, A, alias_inputs = [], [], [], []
         for u_input in inputs:
-            n_node.append(len(np.unique(u_input)))  #n_node存储每个输入序列单独出现的点击动作类别的个数的列表
-        max_n_node = np.max(n_node)   #得到批最长唯一动作会话序列的长度
-        for u_input in inputs:  # u_input 为一个会话序列
-            node = np.unique(u_input)  #该循环的会话的唯一动作序列
-            items.append(node.tolist() + (max_n_node - len(node)) * [0])  #单个点击动作序列的唯一类别并按照批最大类别补全0
-            u_A = np.zeros((max_n_node, max_n_node))  #存储行为矩阵的二维向量(方阵)，长度是最大唯一动作的数量
-            for i in np.arange(len(u_input) - 1):  #循环该序列的长度
-                if u_input[i + 1] == 0:  #循环到i的下一个动作时“0”动作时退出循环，因为0代表序列已经结束，后面都是补的动作0
+            n_node.append(len(np.unique(u_input))) 
+        max_n_node = np.max(n_node)   
+        for u_input in inputs:  
+            node = np.unique(u_input) 
+            items.append(node.tolist() + (max_n_node - len(node)) * [0])  
+            u_A = np.zeros((max_n_node, max_n_node))  
+            for i in np.arange(len(u_input) - 1):  
+                if u_input[i + 1] == 0:  
                     break
-                u = np.where(node == u_input[i])[0][0]  #该动作对应唯一动作集合的序号
-                v = np.where(node == u_input[i + 1])[0][0] #下一个动作对应唯一动作集合的序号
-                u_A[u][v] = 1  #前一个动作u_input[i]转移到后一个动作u_input[i + 1]的次数变成1
-            u_sum_in = np.sum(u_A, 0) #矩阵列求和，最后变成一行
+                u = np.where(node == u_input[i])[0][0]  
+                v = np.where(node == u_input[i + 1])[0][0] 
+                u_A[u][v] = 1  
+            u_sum_in = np.sum(u_A, 0) 
             u_sum_in[np.where(u_sum_in == 0)] = 1
             u_A_in = np.divide(u_A, u_sum_in)
-            u_sum_out = np.sum(u_A, 1) #矩阵行求和，最后变成一列
+            u_sum_out = np.sum(u_A, 1) 
             u_sum_out[np.where(u_sum_out == 0)] = 1
             u_A_out = np.divide(u_A.transpose(), u_sum_out)
-            u_A = np.concatenate([u_A_in, u_A_out]).transpose()  #得到一个会话的连接矩阵
-            A.append(u_A)  #存储该批数据图矩阵的列表，u_A方阵的长度相同——为该批最长唯一动作会话序列的长度
-            alias_inputs.append([np.where(node == i)[0][0] for i in u_input]) #动作序列对应唯一动作集合的位置角标
-        return alias_inputs, A, items, mask, targets #转换过item标号的session序列，邻接矩阵，原始的item序号，表示序列中那些是有用的，目标item（这个是原始的）
-        #返回：动作序列对应唯一动作集合的位置角标，该批数据图矩阵的列表，单个点击动作序列的唯一类别并按照批最大类别补全0列表，面罩，目标数据
-
-    def get_slice_repeat(self, i):  #根据索引i得到对应的数据
-        inputs, mask, targets = self.inputs[i], self.mask[i], self.targets[i] #得到对应索引的输入(全局索引)，面罩，目标数据
-        items, n_node, A, alias_inputs = [], [], [], []
-        for u_input in inputs:
-            n_node.append(len(np.unique(u_input)))  #n_node存储每个输入序列单独出现的点击动作类别的个数的列表
-        max_n_node = np.max(n_node)   #得到批最长唯一动作会话序列的长度
-        for u_input in inputs:  # u_input 为一个会话序列
-            node = np.unique(u_input)  #该循环的会话的唯一动作序列
-            items.append(node.tolist() + (max_n_node - len(node)) * [0])  #单个点击动作序列的唯一类别并按照批最大类别补全0
-            u_A = np.zeros((max_n_node, max_n_node))  #存储行为矩阵的二维向量(方阵)，长度是最大唯一动作的数量
-            u_repeat = np.zeros((max_n_node, max_n_node))
-            for i in np.arange(len(u_input) - 1):  #循环该序列的长度
-                if u_input[i + 1] == 0:  #循环到i的下一个动作时“0”动作时退出循环，因为0代表序列已经结束，后面都是补的动作0
-                    break
-                u = np.where(node == u_input[i])[0][0]  #该动作对应唯一动作集合的序号
-                v = np.where(node == u_input[i + 1])[0][0] #下一个动作对应唯一动作集合的序号
-                if u_repeat[u][v] == 0:
-                    u_A[u][v] = 1  #前一个动作u_input[i]转移到后一个动作u_input[i + 1]的次数变成1
-                    u_repeat[u][v] = 1
-                else:
-                    u_repeat[u][v] = u_repeat[u][v] + 1
-                    u_A[u][v] = u_A[u][v] + 1 / (2*u_repeat[u][v])
-            u_sum_in = np.sum(u_A, 0) #矩阵列求和，最后变成一行
-            u_sum_in[np.where(u_sum_in == 0)] = 1
-            u_A_in = np.divide(u_A, u_sum_in)
-            u_sum_out = np.sum(u_A, 1) #矩阵行求和，最后变成一列
-            u_sum_out[np.where(u_sum_out == 0)] = 1
-            u_A_out = np.divide(u_A.transpose(), u_sum_out)
-            u_A = np.concatenate([u_A_in, u_A_out]).transpose()  #得到一个会话的连接矩阵
-            A.append(u_A)  #存储该批数据图矩阵的列表，u_A方阵的长度相同——为该批最长唯一动作会话序列的长度
-            alias_inputs.append([np.where(node == i)[0][0] for i in u_input]) #动作序列对应唯一动作集合的位置角标
-        return alias_inputs, A, items, mask, targets
+            u_A = np.concatenate([u_A_in, u_A_out]).transpose()  
+            A.append(u_A)  
+            alias_inputs.append([np.where(node == i)[0][0] for i in u_input]) 
+        return alias_inputs, A, items, mask, targets 
 
 
-
-
-
-
-
-
-    def get_slice_global_repeat(self,q,global_graph):
-        inputs, mask, targets = self.inputs[q], self.mask[q], self.targets[q]
-        items, n_node, A, alias_inputs = [], [], [], []
-        global_edge =[]#全局item之间的边转换为item
-        global_item=[]#全局item
-        local_index=[]#当前session序列的item在全局item中的索引。
-        for u_input in inputs:
-            item,edge_index,index,_=Utils.k_hop_subgraph(np.unique(u_input).tolist(), 1, global_graph.edge_index, flow="target_to_source", relabel_nodes=True)
-            global_edge.append(edge_index.cpu().numpy().tolist())
-            global_item.append(item.cpu().numpy().tolist())
-            local_index.append(index.cpu().numpy())
-            n_node.append(len(item))
-        max_n_node = np.max(n_node)
-        for i in range(len(global_item)):
-            global_item[i] = global_item[i] + (max_n_node - len(global_item[i]))*[0]
-            u_A = np.zeros((max_n_node, max_n_node))
-            u_repeat=np.zeros((max_n_node, max_n_node))
-            for j in range(len(global_edge[i][0])):
-                u=global_edge[i][0][j]
-                v=global_edge[i][1][j]
-                if u_repeat[u][v] != 0:
-                    u_repeat[u][v] = u_repeat[u][v]+1
-                    #u_A[u][v] = u_A[u][v]+1/(2*u_repeat[u][v])
-                    u_A[u][v] = u_A[u][v] + 1 / (u_repeat[u][v])
-                else:
-                    u_A[u][v]=1
-                    u_repeat[u][v]=1
-            u_sum_in = np.sum(u_A, 0) #矩阵列求和，最后变成一行
-            u_sum_in[np.where(u_sum_in == 0)] = 1
-            u_A_in = np.divide(u_A, u_sum_in)
-            u_sum_out = np.sum(u_A, 1) #矩阵行求和，最后变成一列
-            u_sum_out[np.where(u_sum_out == 0)] = 1
-            u_A_out = np.divide(u_A.transpose(), u_sum_out)
-            u_A = np.concatenate([u_A_in, u_A_out]).transpose()
-            A.append(u_A)
-            new_inputs=[]
-            for k in inputs[i]:
-                z=local_index[i][np.where(np.unique(inputs[i]) == k)].tolist()#获取local图中的itemindex
-                new_inputs.append(z)
-            alias_inputs.append(sum(new_inputs,[]))
-        return alias_inputs, A, global_item, mask, targets #转换过item标号的session序列(局部)，邻接矩阵（全局），原始的item序号（全局），表示序列中那些是有用的（局部），目标item（这个是原始的）
-
-    def get_slice_global(self,q,global_graph):
-        inputs, mask, targets = self.inputs[q], self.mask[q], self.targets[q]
-        items, n_node, A, alias_inputs = [], [], [], []
-        global_edge =[]#全局item之间的边转换为item
-        global_item=[]#全局item
-        local_index=[]#当前session序列的item在全局item中的索引。
-        for u_input in inputs:
-            item,edge_index,index,_=Utils.k_hop_subgraph(np.unique(u_input).tolist(), 1, global_graph.edge_index, flow="target_to_source", relabel_nodes=True)
-            global_edge.append(edge_index.cpu().numpy().tolist())
-            global_item.append(item.cpu().numpy().tolist())
-            local_index.append(index.cpu().numpy())
-            n_node.append(len(item))
-        max_n_node = np.max(n_node)
-        for i in range(len(global_item)):
-            global_item[i] = global_item[i] + (max_n_node - len(global_item[i]))*[0]
-            u_A = np.zeros((max_n_node, max_n_node))
-            #u_repeat=np.zeros((max_n_node, max_n_node))
-            for j in range(len(global_edge[i][0])):
-                u=global_edge[i][0][j]
-                v=global_edge[i][1][j]
-                u_A[u][v]=1
-
-            u_sum_in = np.sum(u_A, 0) #矩阵列求和，最后变成一行
-            u_sum_in[np.where(u_sum_in == 0)] = 1
-            u_A_in = np.divide(u_A, u_sum_in)
-            u_sum_out = np.sum(u_A, 1) #矩阵行求和，最后变成一列
-            u_sum_out[np.where(u_sum_out == 0)] = 1
-            u_A_out = np.divide(u_A.transpose(), u_sum_out)
-            u_A = np.concatenate([u_A_in, u_A_out]).transpose()
-            A.append(u_A)
-            new_inputs=[]
-            for k in inputs[i]:
-                z=local_index[i][np.where(np.unique(inputs[i]) == k)].tolist()#获取local图中的itemindex
-                new_inputs.append(z)
-            alias_inputs.append(sum(new_inputs,[]))
-        return alias_inputs, A, global_item, mask, targets
-
-
-
-
-
-
-
-    def get_slice_1(self, i):
-        inputs, mask, targets = self.inputs[i], self.mask[i], self.targets[i]  # 得到对应索引的输入，面罩，目标数据
-        items, n_node, A, alias_inputs = [], [], [], []
-        for u_input in inputs:
-            n_node.append(len(np.unique(u_input)))  # n_node存储每个输入序列单独出现的点击动作类别的个数的列表
-        max_n_node = np.max(n_node)  # 得到批最长唯一动作会话序列的长度
-        for u_input in inputs:  # u_input 为一个会话序列
-            node = np.unique(u_input)  #该循环的会话的唯一动作序列
-            items.append(node.tolist() + (max_n_node - len(node)) * [0])  #单个点击动作序列的唯一类别并按照批最大类别补全0
-            u_A = np.zeros((max_n_node, max_n_node))
-            for i in np.arange(len(u_input) - 1):  #循环该序列的长度
-                if u_input[i + 1] == 0:  #循环到i的下一个动作时“0”动作时退出循环，因为0代表序列已经结束，后面都是补的动作0
-                    break
-                u = np.where(node == u_input[i])[0][0]  #该动作对应唯一动作集合的序号
-                v = np.where(node == u_input[i + 1])[0][0] #下一个动作对应唯一动作集合的序号
-                u_A[u][v] = 1  #前一个动作u_input[i]转移到后一个动作u_input[i + 1]的次数变成1
-                u_A[v][u] = 1
-            u_sum_out = np.sum(u_A, 1)
-            u_sum_out[np.where(u_sum_out == 0)] = 1
-            u_A_out = np.divide(u_A.transpose(), u_sum_out)
-            u_A = u_A_out.transpose()
-            A.append(u_A)
-            alias_inputs.append([np.where(node == i)[0][0] for i in u_input])
-        return alias_inputs, A, items, mask, targets
+ 
